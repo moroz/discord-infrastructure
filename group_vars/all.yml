@@ -1,0 +1,8 @@
+app_base_dir: "/usr/local/lib/server"
+app_domain: discord.moroz.dev
+app_name: discord
+app_port: 3000
+app_user: app
+caddy_release: "2.9.1"
+deploy_user: deploy
+github_username: moroz

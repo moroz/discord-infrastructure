@@ -1,0 +1,147 @@
+---
+- name: Install commonly used software
+  remote_user: root
+  hosts: all
+  become: true
+  tags: deps
+  tasks:
+    - name: Install packages
+      pkgng:
+        name:
+          - sudo
+          - mc
+          - neovim
+          - bash
+          - zsh
+          - sqlite3
+          - gtar
+
+- name: Set up users and sudo
+  remote_user: root
+  hosts: all
+  become: true
+  tags: users
+  tasks:
+    - name: Create app user
+      user:
+        name: "{{ app_user }}"
+
+    - name: Create deploy user
+      user:
+        name: "{{ deploy_user }}"
+        groups:
+          - wheel
+        shell: "/usr/local/bin/bash"
+
+    - name: Ensure wheel group has sudo access
+      lineinfile:
+        path: /usr/local/etc/sudoers
+        line: '%wheel ALL=(ALL:ALL) NOPASSWD: ALL'
+
+    - name: Set authorized keys for deploy user from github
+      ansible.posix.authorized_key:
+        user: "{{ deploy_user }}"
+        key: "https://github.com/{{ github_username }}.keys"
+
+- name: Create directories for the app
+  remote_user: "{{ deploy_user }}"
+  become: true
+  hosts: all
+  tags: dirs
+  tasks:
+    - name: Create directories
+      file:
+        name: "{{ item }}"
+        owner: "{{ deploy_user }}"
+        group: "{{ app_user }}"
+        state: directory
+        mode: "0750"
+      with_items:
+        - "{{ app_base_dir }}"
+        - "{{ app_base_dir }}/releases"
+
+- name: Install goose
+  hosts: all
+  remote_user: "{{ deploy_user }}"
+  tags: goose
+
+  tasks:
+    - name: Check if goose is present in target system
+      stat:
+        path: /usr/local/bin/goose
+      register: goose_binary
+
+    - name: Check if local binary exists
+      when: not goose_binary.stat.exists
+      delegate_to: localhost
+      stat:
+        path: "assets/goose.{{ ansible_system | lower }}"
+      register: goose_local_binary
+      vars:
+        ansible_become: false
+
+    - name: Build goose binary locally
+      when: not goose_binary.stat.exists and not goose_local_binary.stat.exists
+      delegate_to: localhost
+      shell:
+        cmd: "env GOOS={{ ansible_system | lower }} GOARCH={{ arch }} ./build_goose.sh"
+      vars:
+        arch: "{{ 'arm64' if ansible_architecture == 'aarch64' else ansible_architecture }}"
+
+    - name: Upload goose binary
+      when: not goose_binary.stat.exists
+      vars:
+        ansible_become: true
+      copy:
+        src: "assets/goose.{{ ansible_system | lower }}"
+        dest: /usr/local/bin/goose
+        owner: root
+        group: wheel
+        mode: "0755"
+
+- name: Install and configure Caddy
+  remote_user: "{{ deploy_user }}"
+  hosts: all
+  tags: caddy
+  tasks:
+    - name: Check if caddy in present in target system
+      stat:
+        path: /usr/local/bin/caddy
+      register: caddy_binary
+
+    - name: Get architecture
+      ansible.builtin.debug:
+        var: ansible_architecture
+
+    - name: Download release
+      when: not caddy_binary.stat.exists
+      get_url:
+        url: "https://github.com/caddyserver/caddy/releases/download/v{{ caddy_release }}/caddy_{{ caddy_release }}_{{ ansible_system | lower }}_{{ arch }}.tar.gz"
+        dest: "/home/{{ deploy_user }}/caddy-{{ caddy_release }}.tar.gz"
+      vars:
+        arch: "{{ 'arm64' if ansible_architecture == 'aarch64' else ansible_architecture }}"
+
+    - name: Create target directory for unpacking
+      when: not caddy_binary.stat.exists
+      file:
+        name: "/home/{{ deploy_user }}/caddy"
+        state: directory
+
+    - name: Unpack the release
+      when: not caddy_binary.stat.exists
+      unarchive:
+        src: "/home/{{ deploy_user }}/caddy-{{ caddy_release }}.tar.gz"
+        dest: "/home/{{ deploy_user }}/caddy"
+        remote_src: true
+
+    - name: Copy caddy binary to PATH
+      when: not caddy_binary.stat.exists
+      copy:
+        src: "/home/{{ deploy_user }}/caddy/caddy"
+        dest: "/usr/local/bin/caddy"
+        owner: root
+        group: wheel
+        mode: "0755"
+        remote_src: true
+      vars:
+        ansible_become: true
