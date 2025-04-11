@@ -25,6 +25,13 @@
     - name: Create app user
       user:
         name: "{{ app_user }}"
+        shell: "/usr/sbin/nologin"
+
+    - name: Create caddy user
+      user:
+        name: caddy
+        shell: "/usr/sbin/nologin"
+        uid: 443
 
     - name: Create deploy user
       user:
@@ -42,6 +49,42 @@
       ansible.posix.authorized_key:
         user: "{{ deploy_user }}"
         key: "https://github.com/{{ github_username }}.keys"
+
+- name: Allow www user to listen on port 443
+  remote_user: root
+  hosts: all
+  become: true
+  tags: ports
+
+  vars:
+    sysctl_settings:
+      - 'security.mac.portacl.suser_exempt=1'
+      - 'security.mac.portacl.rules=uid:443:tcp:80,uid:443:tcp:443,uid:443:udp:443'
+      - 'net.inet.ip.portrange.reservedhigh=0'
+
+  tasks:
+    - name: Enable mac_portacl
+      register: mac_portacl
+      lineinfile:
+        path: /boot/loader.conf
+        line: 'mac_portacl_load="YES"'
+
+    - name: Load mac_portacl kernel module
+      when: mac_portacl is changed
+      shell:
+        cmd: kldload mac_portacl
+
+    - name: Add rules to /etc/sysctl.conf
+      lineinfile:
+        path: /etc/sysctl.conf
+        line: "{{ item }}"
+      with_items: "{{ sysctl_settings }}"
+
+    - name: Set sysctl settings for existing boot
+      ansible.posix.sysctl:
+        name: "{{ item.split('=')[0] }}"
+        value: "{{ item.split('=')[1] }}"
+      with_items: "{{ sysctl_settings }}"
 
 - name: Create directories for the app
   remote_user: "{{ deploy_user }}"
@@ -143,5 +186,32 @@
         group: wheel
         mode: "0755"
         remote_src: true
+      vars:
+        ansible_become: true
+
+    - name: Create a rc.d script for caddy
+      template:
+        src: templates/caddy.rc.sh
+        dest: "/etc/rc.d/caddy"
+        owner: root
+        group: wheel
+        mode: "0555"
+      vars:
+        ansible_become: true
+
+    - name: Create a Caddyfile
+      template:
+        src: templates/Caddyfile
+        dest: "{{ caddyfile_path }}"
+        owner: root
+        group: wheel
+        mode: "0644"
+      vars:
+        ansible_become: true
+
+    - name: Enable caddy in rc.conf
+      lineinfile:
+        path: "/etc/rc.conf"
+        line: 'caddy_enable="YES"'
       vars:
         ansible_become: true

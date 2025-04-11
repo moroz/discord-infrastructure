@@ -4,5 +4,6 @@ app_name: discord
 app_port: 3000
 app_user: app
 caddy_release: "2.9.1"
+caddyfile_path: "/usr/local/etc/Caddyfile"
 deploy_user: deploy
 github_username: moroz

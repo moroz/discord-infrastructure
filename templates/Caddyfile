@@ -1,0 +1,4 @@
+{{ app_domain }} {
+  # reverse_proxy localhost:{{ app_port }}
+  respond "Hello, world!"
+}
