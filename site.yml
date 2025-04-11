@@ -15,6 +15,7 @@
           - zsh
           - sqlite3
           - gtar
+          - fastfetch
 
 - name: Set up users and sudo
   remote_user: root
