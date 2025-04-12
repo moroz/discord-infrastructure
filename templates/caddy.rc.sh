@@ -18,6 +18,7 @@ command="/usr/local/bin/${name}"
 start_cmd="${name}_start"
 stop_cmd="${name}_stop"
 sig_reload="USR1"
+pidfile="/var/run/${name}.pid"
 
 caddy_start() {
   echo "Starting caddy server."

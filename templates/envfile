@@ -1,0 +1,2 @@
+{% for key, value in service_env.items() %}export {{ key }}={{ value | quote }}
+{% endfor %}

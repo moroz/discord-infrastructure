@@ -16,6 +16,9 @@
           - sqlite3
           - gtar
           - fastfetch
+          - curl
+          - git
+          - htop
 
 - name: Set up users and sudo
   remote_user: root
@@ -190,7 +193,7 @@
       vars:
         ansible_become: true
 
-    - name: Create a rc.d script for caddy
+    - name: Create an rc.d script for caddy
       template:
         src: templates/caddy.rc.sh
         dest: "/etc/rc.d/caddy"
@@ -216,3 +219,42 @@
         line: 'caddy_enable="YES"'
       vars:
         ansible_become: true
+
+    - name: Start caddy
+      service:
+        name: caddy
+        state: started
+
+- name: Create services and environment settings
+  hosts: all
+  become: true
+  remote_user: "{{ deploy_user }}"
+  tags: service
+  tasks:
+    - name: Create an rc.d script for {{ app_name }}
+      template:
+        src: templates/server.rc.sh
+        dest: "/etc/rc.d/{{ app_name }}"
+        owner: root
+        group: wheel
+        mode: "0555"
+
+    - name: Create envfile
+      template:
+        src: templates/envfile
+        dest: "{{ app_base_dir }}/{{ app_name }}.env"
+        owner: "{{ deploy_user }}"
+        group: "{{ app_user }}"
+        mode: "0550"
+
+    - name: Enable {{ app_name }} in rc.conf
+      lineinfile:
+        path: "/etc/rc.conf"
+        line: '{{ app_name }}_enable="YES"'
+      vars:
+        ansible_become: true
+
+    - name: Start {{ app_name }} service
+      service:
+        name: "{{ app_name }}"
+        state: restarted

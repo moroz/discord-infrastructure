@@ -1,0 +1,72 @@
+---
+- name: Compile and deploy server
+  hosts: all
+  remote_user: "{{ deploy_user }}"
+  become: true
+  tags: deploy
+
+  vars:
+    release_timestamp: "{{ ansible_date_time.iso8601_basic_short }}"
+    target_dir: "{{ app_base_dir }}/releases/{{ release_timestamp }}"
+    code_dir: "../discord-waiting-list"
+
+  tasks:
+    - name: Build application binary
+      register: binary_build
+      delegate_to: localhost
+      become: false
+      shell:
+        cmd: "make release"
+        chdir: "{{ code_dir }}"
+      environment:
+        GOOS: "{{ ansible_system | lower }}"
+        GOARCH: "{{ 'arm64' if ansible_architecture == 'aarch64' else ansible_architecture }}"
+
+    - name: Create target directory
+      file:
+        name: "{{ target_dir }}"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ app_user }}"
+
+    - name: Unpack release tarball
+      unarchive:
+        src: "{{ code_dir }}/rel/release.tar.gz"
+        dest: "{{ target_dir }}"
+        owner: "{{ deploy_user }}"
+        group: "{{ app_user }}"
+
+    - name: Symlink release to current
+      file:
+        src: "{{ target_dir }}"
+        dest: "{{ app_base_dir }}/current"
+        state: link
+        owner: "{{ deploy_user }}"
+        group: "{{ app_user }}"
+
+    - name: Restart service
+      service:
+        name: "{{ app_name }}"
+        state: restarted
+
+- name: Remove old releases
+  hosts: all
+  remote_user: "{{ deploy_user }}"
+  become: true
+  tags: clean
+
+  tasks:
+    - name: List all directories in release root
+      find:
+        paths: "{{ app_base_dir }}/releases"
+        file_type: directory
+      register: paths
+
+    - name: Delete old releases
+      file:
+        name: "{{ item }}"
+        state: absent
+      with_items: "{{ old_releases }}"
+      vars:
+        n: "{{ keep_releases }}"
+        old_releases: "{{ (paths.files | map(attribute='path') | sort(reverse = True))[n:] }}"

@@ -7,3 +7,11 @@ caddy_release: "2.9.1"
 caddyfile_path: "/usr/local/etc/Caddyfile"
 deploy_user: deploy
 github_username: moroz
+keep_releases: 3
+
+service_env:
+  DATABASE_URL: "{{ app_base_dir }}/prod.db"
+  GOOSE_DBSTRING: "{{ app_base_dir }}/prod.db"
+  GOOSE_DRIVER: sqlite
+  GOOSE_MIGRATION_DIR: "{{ app_base_dir }}/current/migrations"
+  APP_ENV: prod
