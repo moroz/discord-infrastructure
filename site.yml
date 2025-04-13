@@ -102,7 +102,7 @@
         owner: "{{ deploy_user }}"
         group: "{{ app_user }}"
         state: directory
-        mode: "0750"
+        mode: "0770"
       with_items:
         - "{{ app_base_dir }}"
         - "{{ app_base_dir }}/releases"
